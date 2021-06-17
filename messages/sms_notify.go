@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-func SmsChannelNotifyMessage(message model.SMS, activeRequests []*model.ForwardingRequest) slack.Message {
-	usersList := generateUserReferences(activeRequests)
+func SmsChannelNotifyMessage(message model.SMS, userIds []string) slack.Message {
+	usersList := generateUserReferences(userIds)
 
 	return slack.NewBlockMessage(
 		smsMessageBlock(message),
@@ -16,7 +16,7 @@ func SmsChannelNotifyMessage(message model.SMS, activeRequests []*model.Forwardi
 			"context",
 			slack.NewTextBlockObject(
 				slack.MarkdownType,
-				fmt.Sprintf(":incoming_envelope: Forwarded to %d user(s): %s", len(activeRequests), usersList),
+				fmt.Sprintf(":incoming_envelope: Forwarded to %d user(s): %s", len(userIds), usersList),
 				false,
 				false,
 			),
@@ -43,11 +43,11 @@ func smsMessageBlock(message model.SMS) *slack.SectionBlock {
 	)
 }
 
-func generateUserReferences(requests []*model.ForwardingRequest) interface{} {
-	references := make([]string, len(requests))
+func generateUserReferences(userIds []string) interface{} {
+	references := make([]string, len(userIds))
 
-	for i, request := range requests {
-		references[i] = fmt.Sprintf("<@%s>", request.RequesterId)
+	for i, userId := range userIds {
+		references[i] = fmt.Sprintf("<@%s>", userId)
 	}
 
 	return strings.Join(references, ", ")

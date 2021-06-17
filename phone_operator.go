@@ -134,19 +134,37 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 	activeRequests, _ := repo.GetActiveForwardingRequests(r.Context())
 	fmt.Printf("%d active requests", len(activeRequests))
 
-	for _, request := range activeRequests {
-		notifyUserBlock(r.Context(), request.RequesterId, messages.SmsUserNotifyMessage(message))
+	uniqueUsers := uniqueUserIds(activeRequests)
+
+	for _, userId := range uniqueUsers {
+		notifyUserBlock(r.Context(), userId, messages.SmsUserNotifyMessage(message))
 	}
 
 	_, _, err = slackClient.PostMessage(
 		config.Slack.Channel,
-		slack.MsgOptionBlocks(messages.SmsChannelNotifyMessage(message, activeRequests).Blocks.BlockSet...),
+		slack.MsgOptionBlocks(messages.SmsChannelNotifyMessage(message, uniqueUsers).Blocks.BlockSet...),
 	)
 	if err != nil {
 		log.Printf("Error: %v", err)
 	}
 
 	fmt.Fprintf(w, "")
+}
+
+func uniqueUserIds(requests []*model.ForwardingRequest) []string {
+	userIdsMap := make(map[string]bool)
+
+	for _, request := range requests {
+		userIdsMap[request.RequesterId] = true
+	}
+
+	var userIds []string
+
+	for userId, _ := range userIdsMap {
+		userIds = append(userIds, userId)
+	}
+
+	return userIds
 }
 
 func interactivityHandler(w http.ResponseWriter, r *http.Request) {
