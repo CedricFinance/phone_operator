@@ -216,11 +216,7 @@ func refuseForwardingRequest(ctx context.Context, message slack.InteractionCallb
 func acceptForwardingRequest(ctx context.Context, message slack.InteractionCallback, requestId string) {
 	repo.AcceptForwardingRequest(ctx, requestId, message.User.ID)
 	request, _ := repo.GetForwardingRequest(ctx, requestId)
-	notifyUser(
-		ctx,
-		request.RequesterId,
-		fmt.Sprintf("Your request has been accepted. I'll forward you the messages until %s", request.ExpiresAt.String()),
-	)
+	notifyUserBlock(ctx, request.RequesterId, messages.AcceptedRequestMessage(request))
 	slackClient.PostMessage(
 		message.Channel.GroupConversation.Conversation.ID,
 		slack.MsgOptionBlocks(messages.AcceptRefuseRequestMessage(request).Blocks.BlockSet...),
@@ -293,7 +289,7 @@ func stopSMSForward(w http.ResponseWriter, id string) {
 }
 
 func parseDuration(durationStr string) (int, error) {
-	pattern := regexp.MustCompile("([0-9])+\\s*([a-zA-Z]*)")
+	pattern := regexp.MustCompile("([0-9]+)\\s*([a-zA-Z]*)")
 	result := pattern.FindStringSubmatch(durationStr)
 	fmt.Printf("%v", result)
 
@@ -324,7 +320,7 @@ func parseDuration(durationStr string) (int, error) {
 
 func getMinutesPerUnit(unit string) (int, error) {
 	switch unit {
-	case "m", "min", "minute", "minutes":
+	case "", "m", "min", "minute", "minutes":
 		return 1, nil
 	case "h", "hour", "hours":
 		return 60, nil
