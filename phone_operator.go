@@ -1,7 +1,12 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/CedricFinance/phone_operator/database"
+	"github.com/CedricFinance/phone_operator/messages"
+	"github.com/CedricFinance/phone_operator/repository"
 	"github.com/slack-go/slack"
 	"gopkg.in/yaml.v3"
 	"log"
@@ -18,10 +23,17 @@ type Config struct {
 		Token             string
 		Channel           string
 	}
+	Database struct {
+		User     string
+		Password string
+		Name     string
+		Host     string
+	}
 }
 
 var config Config
 var slackClient *slack.Client
+var repo *repository.Repository
 
 func main() {
 
@@ -37,10 +49,21 @@ func main() {
 		panic(fmt.Errorf("failed to unmarshal config: %s", err))
 	}
 
-	slackClient = slack.New(config.Slack.Token)
+	slackClient = slack.New(config.Slack.Token, slack.OptionDebug(true))
+
+	db := database.Connect(
+		config.Database.User,
+		config.Database.User,
+		config.Database.Name,
+		config.Database.Host,
+	)
+
+	repo = repository.New(db)
 
 	http.HandleFunc("/slash", slashCommandHandler)
 	http.HandleFunc("/sms", smsHandler)
+	http.HandleFunc("/interactivity", interactivityHandler)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8000"
@@ -81,7 +104,7 @@ func slashCommandHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		startSMSForward(w, command.UserID, command.UserName, durationInMinutes)
+		startSMSForward(r.Context(), w, command.UserID, command.UserName, durationInMinutes)
 		return
 	}
 
@@ -93,8 +116,148 @@ func slashCommandHandler(w http.ResponseWriter, r *http.Request) {
 	_, err = fmt.Fprint(w, "Hello, World!")
 }
 
-func startSMSForward(w http.ResponseWriter, id string, name string, minutes int) {
-	fmt.Fprintf(w, "I'm asking to forward SMS to you for %d minute(s)", minutes)
+func smsHandler(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Failed to decode the message")
+		return
+	}
+
+	message := SMS{
+		Body: r.FormValue("Body"),
+		From: r.FormValue("From"),
+	}
+	log.Printf("%+v", message)
+
+	_, _, err = slackClient.PostMessage(config.Slack.Channel, slack.MsgOptionText(
+		fmt.Sprintf("*Message from:* %s\n```\n%s\n```", message.From, message.Body),
+		true,
+	))
+	if err != nil {
+		log.Printf("Error: %v", err)
+	}
+
+	fmt.Fprintf(w, "ok")
+}
+
+func interactivityHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	payload := r.Form.Get("payload")
+
+	var message slack.InteractionCallback
+	if err := json.Unmarshal([]byte(payload), &message); err != nil {
+		fmt.Printf("Failed to unmarshal %q: %v\n", payload, err)
+		fmt.Fprintf(w, err.Error())
+		return
+	}
+
+	switch message.Type {
+	case slack.InteractionTypeBlockActions:
+		fmt.Println("block actions")
+
+		if len(message.ActionCallback.BlockActions) > 1 {
+			fmt.Println("Received multiple block actions")
+			return
+		}
+
+		if message.View.CallbackID == "" {
+			handleActionFromBlockId(message, r, w)
+		}
+
+		return
+	}
+}
+
+func handleActionFromBlockId(message slack.InteractionCallback, r *http.Request, w http.ResponseWriter) {
+	action := message.ActionCallback.BlockActions[0]
+
+	switch action.BlockID {
+	case "forwarding_request":
+		handleForwardingRequestActions(message, r, w)
+	}
+}
+
+func handleForwardingRequestActions(message slack.InteractionCallback, r *http.Request, w http.ResponseWriter) {
+	action := message.ActionCallback.BlockActions[0].ActionID
+	requestId := message.ActionCallback.BlockActions[0].Value
+
+	if action == "accept" {
+		acceptForwardingRequest(r.Context(), message, requestId)
+	} else {
+		refuseForwardingRequest(r.Context(), message, requestId)
+	}
+
+}
+
+func refuseForwardingRequest(ctx context.Context, message slack.InteractionCallback, requestId string) {
+	repo.RefuseForwardingRequest(ctx, requestId, message.User.ID)
+	request, _ := repo.GetForwardingRequest(ctx, requestId)
+	notifyUser(
+		ctx,
+		request.RequesterId,
+		"Sorry, your request has been refused.",
+	)
+	slackClient.PostMessage(
+		message.Channel.GroupConversation.Conversation.ID,
+		slack.MsgOptionBlocks(messages.AcceptRefuseRequestMessage(request).Blocks.BlockSet...),
+		slack.MsgOptionReplaceOriginal(message.ResponseURL),
+	)
+}
+
+func acceptForwardingRequest(ctx context.Context, message slack.InteractionCallback, requestId string) {
+	repo.AcceptForwardingRequest(ctx, requestId, message.User.ID)
+	request, _ := repo.GetForwardingRequest(ctx, requestId)
+	notifyUser(
+		ctx,
+		request.RequesterId,
+		fmt.Sprintf("Your request has been accepted. I'll forward you the messages until %s", request.ExpiresAt.String()),
+	)
+	slackClient.PostMessage(
+		message.Channel.GroupConversation.Conversation.ID,
+		slack.MsgOptionBlocks(messages.AcceptRefuseRequestMessage(request).Blocks.BlockSet...),
+		slack.MsgOptionReplaceOriginal(message.ResponseURL),
+	)
+}
+
+func notifyUser(ctx context.Context, slackId string, message string) error {
+	c, _, _, err := slackClient.OpenConversationContext(ctx, &slack.OpenConversationParameters{
+		ReturnIM: true,
+		Users:    []string{slackId},
+	})
+	if err != nil {
+		return err
+	}
+
+	_, _, _, err = slackClient.SendMessage(
+		c.ID,
+		slack.MsgOptionText(message, false),
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func startSMSForward(context context.Context, w http.ResponseWriter, userId string, userName string, duration int) {
+	request := repository.NewForwardingRequest(userId, userName, duration)
+	err := repo.SaveForwardingRequest(context, request)
+	if err != nil {
+		fmt.Fprintf(w, "Oops. Something went wrong :sad:. Error: %s", err)
+		return
+	}
+
+	_, _, err = slackClient.PostMessage(
+		config.Slack.Channel,
+		slack.MsgOptionBlocks(messages.AcceptRefuseRequestMessage(request).Blocks.BlockSet...),
+	)
+	if err != nil {
+		fmt.Fprintf(w, "Oops. Something went wrong :sad:. Error: %s", err)
+		return
+	}
+
+	fmt.Fprintf(w, "I'm asking to forward SMS to you for %d minute(s)", duration)
 }
 
 func stopSMSForward(w http.ResponseWriter, id string) {
@@ -151,29 +314,4 @@ func showHelp(w http.ResponseWriter) {
 type SMS struct {
 	From string
 	Body string
-}
-
-func smsHandler(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseForm()
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Failed to decode the message")
-		return
-	}
-
-	message := SMS{
-		Body: r.FormValue("Body"),
-		From: r.FormValue("From"),
-	}
-	log.Printf("%+v", message)
-
-	_, _, err = slackClient.PostMessage(config.Slack.Channel, slack.MsgOptionText(
-		fmt.Sprintf("*Message from:* %s\n```\n%s\n```", message.From, message.Body),
-		true,
-	))
-	if err != nil {
-		log.Printf("Error: %v", err)
-	}
-
-	fmt.Fprintf(w, "ok")
 }
