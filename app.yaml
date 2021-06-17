@@ -1,8 +1,2 @@
-application: phone_operator 
-version: 1
+service: phone-operator
 runtime: go115
-api_version: go1
-
-handlers:
-- url: /.*
-  script: _go_app

@@ -54,7 +54,7 @@ func main() {
 
 	db := database.Connect(
 		config.Database.User,
-		config.Database.User,
+		config.Database.Password,
 		config.Database.Name,
 		config.Database.Host,
 	)
