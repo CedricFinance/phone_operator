@@ -17,7 +17,7 @@ func acceptRefuseMessageBlock(request *model.ForwardingRequest) *slack.SectionBl
 	return slack.NewSectionBlock(
 		slack.NewTextBlockObject(
 			slack.MarkdownType,
-			fmt.Sprintf("<@%s> want's to receive SMS for %d minute(s)", request.RequesterId, request.Duration),
+			fmt.Sprintf("<@%s> want's to receive texts for %d minute(s)", request.RequesterId, request.Duration),
 			false,
 			false,
 		),

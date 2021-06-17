@@ -281,11 +281,11 @@ func startSMSForward(context context.Context, w http.ResponseWriter, userId stri
 		return
 	}
 
-	fmt.Fprintf(w, "I'm asking to forward SMS to you for %d minute(s)", duration)
+	fmt.Fprintf(w, "I have forwarded your request to the admins")
 }
 
 func stopSMSForward(w http.ResponseWriter, id string) {
-	fmt.Fprintf(w, "Ok, I won't forward you more SMS")
+	fmt.Fprintf(w, "Ok, I won't forward you more texts")
 }
 
 func parseDuration(durationStr string) (int, error) {
@@ -298,23 +298,18 @@ func parseDuration(durationStr string) (int, error) {
 	}
 
 	var err error
-	duration := 0
-	minutesPerUnit := 1
 
-	if len(result) > 1 {
-		duration64, err := strconv.ParseInt(result[1], 10, 32)
-		duration = int(duration64)
-		if err != nil {
-			return 0, fmt.Errorf("I don't understand the duration you want. %q is not a number.", result[1])
-		}
+	duration64, err := strconv.ParseInt(result[1], 10, 32)
+	duration := int(duration64)
+	if err != nil {
+		return 0, fmt.Errorf("I don't understand the duration you want. %q is not a number.", result[1])
 	}
 
-	if len(result) > 2 {
-		minutesPerUnit, err = getMinutesPerUnit(result[2])
-		if err != nil {
-			return 0, fmt.Errorf("I don't understand the duration you want. %q is not a valid unit. Please use:\n- `m`, `min`, `minute`, `minutes` for minutes\n- `h`, `hour`, `hours` for hours\n- `d`, `day`, `days` for days\n", result[2])
-		}
+	minutesPerUnit, err := getMinutesPerUnit(result[2])
+	if err != nil {
+		return 0, fmt.Errorf("I don't understand the duration you want. %q is not a valid unit. Please use:\n- `m`, `min`, `minute`, `minutes` for minutes\n- `h`, `hour`, `hours` for hours\n- `d`, `day`, `days` for days\n", result[2])
 	}
+
 	return duration * minutesPerUnit, nil
 }
 
@@ -332,5 +327,5 @@ func getMinutesPerUnit(unit string) (int, error) {
 }
 
 func showHelp(w http.ResponseWriter) {
-	fmt.Fprintf(w, "Available commands:\n`/sms help` - display this help message\n`/sms start [duration]` - ask to start SMS forwarding for [duration] (default duration is 1h)\n`/sms stop` - stop SMS forwarding")
+	fmt.Fprintf(w, "Available commands:\n`/sms help` - display this help message\n`/sms start [duration]` - ask to start texts forwarding for [duration] (default duration is 1h)\n`/sms stop` - stop texts forwarding")
 }
