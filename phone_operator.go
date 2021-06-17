@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/CedricFinance/phone_operator/database"
 	"github.com/CedricFinance/phone_operator/messages"
+	"github.com/CedricFinance/phone_operator/model"
 	"github.com/CedricFinance/phone_operator/repository"
 	"github.com/slack-go/slack"
 	"gopkg.in/yaml.v3"
@@ -124,16 +125,23 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message := SMS{
+	message := model.SMS{
 		Body: r.FormValue("Body"),
 		From: r.FormValue("From"),
 	}
 	log.Printf("%+v", message)
 
-	_, _, err = slackClient.PostMessage(config.Slack.Channel, slack.MsgOptionText(
-		fmt.Sprintf("*Message from:* %s\n```\n%s\n```", message.From, message.Body),
-		true,
-	))
+	activeRequests, _ := repo.GetActiveForwardingRequests(r.Context())
+	fmt.Printf("%d active requests", len(activeRequests))
+
+	for _, request := range activeRequests {
+		notifyUserBlock(r.Context(), request.RequesterId, messages.SmsUserNotifyMessage(message, activeRequests))
+	}
+
+	_, _, err = slackClient.PostMessage(
+		config.Slack.Channel,
+		slack.MsgOptionBlocks(messages.SmsChannelNotifyMessage(message, activeRequests).Blocks.BlockSet...),
+	)
 	if err != nil {
 		log.Printf("Error: %v", err)
 	}
@@ -240,6 +248,26 @@ func notifyUser(ctx context.Context, slackId string, message string) error {
 	return nil
 }
 
+func notifyUserBlock(ctx context.Context, slackId string, message slack.Message) error {
+	c, _, _, err := slackClient.OpenConversationContext(ctx, &slack.OpenConversationParameters{
+		ReturnIM: true,
+		Users:    []string{slackId},
+	})
+	if err != nil {
+		return err
+	}
+
+	_, _, _, err = slackClient.SendMessage(
+		c.ID,
+		slack.MsgOptionBlocks(message.Blocks.BlockSet...),
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func startSMSForward(context context.Context, w http.ResponseWriter, userId string, userName string, duration int) {
 	request := repository.NewForwardingRequest(userId, userName, duration)
 	err := repo.SaveForwardingRequest(context, request)
@@ -309,9 +337,4 @@ func getMinutesPerUnit(unit string) (int, error) {
 
 func showHelp(w http.ResponseWriter) {
 	fmt.Fprintf(w, "Available commands:\n`/sms help` - display this help message\n`/sms start [duration]` - ask to start SMS forwarding for [duration] (default duration is 1h)\n`/sms stop` - stop SMS forwarding")
-}
-
-type SMS struct {
-	From string
-	Body string
 }

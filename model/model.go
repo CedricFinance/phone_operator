@@ -13,3 +13,8 @@ type ForwardingRequest struct {
 	ExpiresAt     *time.Time
 	AnsweredBy    string
 }
+
+type SMS struct {
+	From string
+	Body string
+}
