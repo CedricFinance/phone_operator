@@ -135,7 +135,7 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("%d active requests", len(activeRequests))
 
 	for _, request := range activeRequests {
-		notifyUserBlock(r.Context(), request.RequesterId, messages.SmsUserNotifyMessage(message, activeRequests))
+		notifyUserBlock(r.Context(), request.RequesterId, messages.SmsUserNotifyMessage(message))
 	}
 
 	_, _, err = slackClient.PostMessage(

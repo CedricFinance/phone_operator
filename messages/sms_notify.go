@@ -24,18 +24,9 @@ func SmsChannelNotifyMessage(message model.SMS, activeRequests []*model.Forwardi
 	)
 }
 
-func SmsUserNotifyMessage(message model.SMS, activeRequests []*model.ForwardingRequest) slack.Message {
+func SmsUserNotifyMessage(message model.SMS) slack.Message {
 	return slack.NewBlockMessage(
 		smsMessageBlock(message),
-		slack.NewContextBlock(
-			"context",
-			slack.NewTextBlockObject(
-				slack.MarkdownType,
-				fmt.Sprintf(":incoming_envelope: Forwarded to %d user(s)", len(activeRequests)),
-				false,
-				false,
-			),
-		),
 	)
 }
 
