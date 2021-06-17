@@ -178,6 +178,11 @@ func interactivityHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if message.Token != config.Slack.VerificationToken {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
 	switch message.Type {
 	case slack.InteractionTypeBlockActions:
 		fmt.Println("block actions")
