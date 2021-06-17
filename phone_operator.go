@@ -146,7 +146,7 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error: %v", err)
 	}
 
-	fmt.Fprintf(w, "ok")
+	fmt.Fprintf(w, "")
 }
 
 func interactivityHandler(w http.ResponseWriter, r *http.Request) {
