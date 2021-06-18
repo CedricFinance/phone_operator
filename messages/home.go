@@ -8,22 +8,69 @@ import (
 )
 
 func HomeMessage(requests []*model.ForwardingRequest) slack.Message {
-	blocks := make([]slack.Block, 2*len(requests)+2)
+	var activeRequests []*model.ForwardingRequest
+	var pendingRequests []*model.ForwardingRequest
+	var pastRequests []*model.ForwardingRequest
 
-	blocks[0] = slack.NewSectionBlock(
+	for _, request := range requests {
+		if request.IsActive() {
+			activeRequests = append(activeRequests, request)
+		} else if request.IsPending() {
+			pendingRequests = append(pendingRequests, request)
+		} else {
+			pastRequests = append(pastRequests, request)
+		}
+	}
+
+	var blocks []slack.Block
+
+	blocks = append(blocks, slack.NewSectionBlock(
 		slack.NewTextBlockObject(
 			slack.MarkdownType,
-			"*Your Requests*",
+			"*Your active requests*",
 			false,
 			false,
 		),
 		nil,
 		nil,
-	)
-	blocks[1] = slack.NewDividerBlock()
+	))
+	blocks = append(blocks, slack.NewDividerBlock())
+	blocks = addRequestsBlocks(activeRequests, blocks)
+	blocks = append(blocks, slack.NewContextBlock("", slack.NewImageBlockElement("https://api.slack.com/img/blocks/bkb_template_images/placeholder.png", "placeholder")))
 
-	for i, request := range requests {
-		blocks[2*i+2] = slack.NewSectionBlock(
+	blocks = append(blocks, slack.NewSectionBlock(
+		slack.NewTextBlockObject(
+			slack.MarkdownType,
+			"*Your pending requests*",
+			false,
+			false,
+		),
+		nil,
+		nil,
+	))
+	blocks = append(blocks, slack.NewDividerBlock())
+	blocks = addRequestsBlocks(pendingRequests, blocks)
+	blocks = append(blocks, slack.NewContextBlock("", slack.NewImageBlockElement("https://api.slack.com/img/blocks/bkb_template_images/placeholder.png", "placeholder")))
+
+	blocks = append(blocks, slack.NewSectionBlock(
+		slack.NewTextBlockObject(
+			slack.MarkdownType,
+			"*Your past requests*",
+			false,
+			false,
+		),
+		nil,
+		nil,
+	))
+	blocks = append(blocks, slack.NewDividerBlock())
+	blocks = addRequestsBlocks(pastRequests, blocks)
+
+	return slack.NewBlockMessage(blocks...)
+}
+
+func addRequestsBlocks(activeRequests []*model.ForwardingRequest, blocks []slack.Block) []slack.Block {
+	for _, request := range activeRequests {
+		blocks = append(blocks, slack.NewSectionBlock(
 			slack.NewTextBlockObject(
 				slack.MarkdownType,
 				getMessage(request),
@@ -32,11 +79,10 @@ func HomeMessage(requests []*model.ForwardingRequest) slack.Message {
 			),
 			nil,
 			getAccessory(request),
-		)
-		blocks[2*i+3] = slack.NewDividerBlock()
+		))
+		blocks = append(blocks, slack.NewDividerBlock())
 	}
-
-	return slack.NewBlockMessage(blocks...)
+	return blocks
 }
 
 func getMessage(request *model.ForwardingRequest) string {

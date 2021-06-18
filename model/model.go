@@ -18,6 +18,10 @@ func (r ForwardingRequest) IsActive() bool {
 	return r.ExpiresAt != nil && r.ExpiresAt.After(time.Now().UTC())
 }
 
+func (r ForwardingRequest) IsPending() bool {
+	return r.AcceptedAt == nil && r.RefusedAt == nil
+}
+
 type SMS struct {
 	From string
 	Body string
