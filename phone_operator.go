@@ -194,10 +194,30 @@ func interactivityHandler(w http.ResponseWriter, r *http.Request) {
 
 		if message.View.CallbackID == "" {
 			handleActionFromBlockId(message, r, w)
+		} else {
+			handleActionFromCallbackID(message, r, w)
 		}
 
 		return
 	}
+}
+
+func handleActionFromCallbackID(message slack.InteractionCallback, r *http.Request, w http.ResponseWriter) {
+	switch message.View.CallbackID {
+	case "home":
+		action := message.ActionCallback.BlockActions[0].ActionID
+
+		if action == "stop" {
+			requestId := message.ActionCallback.BlockActions[0].Value
+			stopRequest(r.Context(), requestId)
+			UpdateHome(r.Context(), message.User.ID)
+		}
+
+	}
+}
+
+func stopRequest(ctx context.Context, requestId string) {
+	repo.StopForwardingRequest(ctx, requestId)
 }
 
 func handleActionFromBlockId(message slack.InteractionCallback, r *http.Request, w http.ResponseWriter) {
@@ -234,6 +254,10 @@ func refuseForwardingRequest(ctx context.Context, message slack.InteractionCallb
 		slack.MsgOptionBlocks(messages.AcceptRefuseRequestMessage(request).Blocks.BlockSet...),
 		slack.MsgOptionReplaceOriginal(message.ResponseURL),
 	)
+	err := UpdateHome(ctx, request.RequesterId)
+	if err != nil {
+		fmt.Printf("Error: %v", err)
+	}
 }
 
 func acceptForwardingRequest(ctx context.Context, message slack.InteractionCallback, requestId string) {
@@ -245,6 +269,10 @@ func acceptForwardingRequest(ctx context.Context, message slack.InteractionCallb
 		slack.MsgOptionBlocks(messages.AcceptRefuseRequestMessage(request).Blocks.BlockSet...),
 		slack.MsgOptionReplaceOriginal(message.ResponseURL),
 	)
+	err := UpdateHome(ctx, request.RequesterId)
+	if err != nil {
+		fmt.Printf("Error: %v", err)
+	}
 }
 
 func notifyUser(ctx context.Context, slackId string, message string) error {
@@ -304,7 +332,28 @@ func startSMSForward(context context.Context, w http.ResponseWriter, userId stri
 		return
 	}
 
+	err = UpdateHome(context, userId)
+	if err != nil {
+		fmt.Printf("Error: %v", err)
+	}
+
 	fmt.Fprintf(w, "I have forwarded your request to the admins")
+}
+
+func UpdateHome(context context.Context, userId string) error {
+	requests, _ := repo.GetForwardingRequests(context, userId)
+
+	_, err := slackClient.PublishViewContext(
+		context,
+		userId,
+		slack.HomeTabViewRequest{
+			Type:       slack.VTHomeTab,
+			Blocks:     messages.HomeMessage(requests).Blocks,
+			CallbackID: "home",
+		},
+		"",
+	)
+	return err
 }
 
 func stopSMSForward(w http.ResponseWriter, id string) {

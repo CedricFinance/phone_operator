@@ -155,6 +155,49 @@ func (r *Repository) GetActiveForwardingRequests(ctx context.Context) ([]*model.
 	return results, nil
 }
 
+func (r *Repository) GetForwardingRequests(ctx context.Context, requesterId string) ([]*model.ForwardingRequest, error) {
+	q := "SELECT id, requester_id, requester_name, duration, created_at, accepted_at, refused_at, expires_at, answered_by\n  FROM ForwardingRequests\n WHERE requester_id = ?\n ORDER BY created_at DESC\n LIMIT 10"
+
+	rows, err := r.db.QueryContext(ctx, q, requesterId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []*model.ForwardingRequest
+
+	for rows.Next() {
+		result := model.ForwardingRequest{}
+
+		err = rows.Scan(
+			&result.Id,
+			&result.RequesterId,
+			&result.RequesterName,
+			&result.Duration,
+			&result.CreatedAt,
+			&result.AcceptedAt,
+			&result.RefusedAt,
+			&result.ExpiresAt,
+			&result.AnsweredBy,
+		)
+
+		results = append(results, &result)
+	}
+
+	return results, nil
+}
+
+func (r *Repository) StopForwardingRequest(ctx context.Context, requestId string) error {
+	_, err := r.db.ExecContext(
+		ctx,
+		"UPDATE ForwardingRequests SET expires_at = ? WHERE id = ?",
+		time.Now().UTC(),
+		requestId,
+	)
+
+	return err
+}
+
 func NewForwardingRequest(requesterId string, requesterName string, duration int) *model.ForwardingRequest {
 	return &model.ForwardingRequest{
 		Id:            uuid.New().String(),
