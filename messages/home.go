@@ -86,9 +86,9 @@ func addRequestsBlocks(activeRequests []*model.ForwardingRequest, blocks []slack
 }
 
 func getMessage(request *model.ForwardingRequest) string {
-	if request.AcceptedAt != nil {
+	if request.IsActive() {
 		return fmt.Sprintf(
-			"<!date^%d^{date_short_pretty} {time}|%s> You'll receive text messages until <!date^%d^{date_short_pretty} {time}|%s>\nStatus: %s",
+			"*<!date^%d^{date_short_pretty} {time}|%s>* You'll receive text messages until <!date^%d^{date_short_pretty} {time}|%s>\n*Status*: %s",
 			request.CreatedAt.Unix(),
 			request.CreatedAt.String(),
 			request.ExpiresAt.Unix(),
@@ -97,8 +97,21 @@ func getMessage(request *model.ForwardingRequest) string {
 		)
 	}
 
+	if request.AcceptedAt != nil {
+		return fmt.Sprintf(
+			"*<!date^%d^{date_short_pretty} {time}|%s>* You receveid text messages from <!date^%d^{date_short_pretty} {time}|%s> to <!date^%d^{date_short_pretty} {time}|%s>\n*Status*: %s",
+			request.CreatedAt.Unix(),
+			request.CreatedAt.String(),
+			request.AcceptedAt.Unix(),
+			request.AcceptedAt.String(),
+			request.ExpiresAt.Unix(),
+			request.ExpiresAt.String(),
+			getStatus(request),
+		)
+	}
+
 	return fmt.Sprintf(
-		"<!date^%d^{date_short_pretty} {time}|%s> You asked to receive text messages for %d minute(s)\nStatus: %s",
+		"*<!date^%d^{date_short_pretty} {time}|%s>* You asked to receive text messages for %d minute(s)\n*Status*: %s",
 		request.CreatedAt.Unix(),
 		request.CreatedAt.String(),
 		request.Duration,
