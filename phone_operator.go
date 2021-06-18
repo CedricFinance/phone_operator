@@ -110,7 +110,7 @@ func slashCommandHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if parts[0] == "stop" {
-		stopSMSForward(w, command.UserID)
+		stopSMSForward(r.Context(), w, command.UserID)
 		return
 	}
 
@@ -356,8 +356,20 @@ func UpdateHome(context context.Context, userId string) error {
 	return err
 }
 
-func stopSMSForward(w http.ResponseWriter, id string) {
-	fmt.Fprintf(w, "Ok, I won't forward you more texts")
+func stopSMSForward(ctx context.Context, w http.ResponseWriter, requesterId string) {
+	requests, _ := repo.GetForwardingRequests(ctx, requesterId)
+
+	stopped := 0
+	for _, request := range requests {
+		if request.IsActive() {
+			stopRequest(ctx, request.Id)
+			stopped++
+		}
+	}
+
+	UpdateHome(ctx, requesterId)
+
+	fmt.Fprintf(w, "I stopped %d forwarding request(s)", stopped)
 }
 
 func parseDuration(durationStr string) (int, error) {
