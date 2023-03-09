@@ -62,8 +62,14 @@ func main() {
     repo = repository.New(db)
 
     http.HandleFunc("/slash", slashCommandHandler)
-    http.Handle("/sms", SMSHandler(ParseTwilioSMS))
-    http.Handle("/nexmo/sms", SMSHandler(ParseNexmoSMS))
+    http.Handle("/sms", SMSHandler{
+        Parser:     ParseTwilioSMS,
+        SMSHandler: handleIncomingSMSContext,
+    })
+    http.Handle("/nexmo/sms", SMSHandler{
+        Parser:     ParseNexmoSMS,
+        SMSHandler: handleIncomingSMSContext,
+    })
     http.HandleFunc("/interactivity", interactivityHandler)
 
     port := os.Getenv("PORT")
@@ -77,10 +83,13 @@ func main() {
     log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }
 
-type SMSHandler model.SMSParser
+type SMSHandler struct {
+    Parser     model.SMSParser
+    SMSHandler func(ctx context.Context, message model.SMS) error
+}
 
-func (parser SMSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    message, err := parser(r)
+func (h SMSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+    message, err := h.Parser(r)
     if err != nil {
         w.WriteHeader(http.StatusInternalServerError)
         fmt.Fprintf(w, "Failed to decode the incoming SMS: %s", err)
@@ -88,7 +97,7 @@ func (parser SMSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     }
     log.Printf("%+v", message)
 
-    err = handleIncomingSMSContext(r.Context(), message)
+    err = h.SMSHandler(r.Context(), message)
     if err != nil {
         fmt.Println("Failed to handle incoming SMS", err)
     }
