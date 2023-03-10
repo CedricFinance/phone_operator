@@ -1,2 +1,2 @@
 service: phone-operator
-runtime: go115
+runtime: go119

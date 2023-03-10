@@ -62,15 +62,21 @@ func main() {
     repo = repository.New(db)
 
     http.HandleFunc("/slash", slashCommandHandler)
-    http.Handle("/sms", SMSHandler{
-        Parser:     ParseTwilioSMS,
-        SMSHandler: handleIncomingSMSContext,
-    })
-    http.Handle("/nexmo/sms", SMSHandler{
-        Parser:     ParseNexmoSMS,
-        SMSHandler: handleIncomingSMSContext,
-    })
     http.HandleFunc("/interactivity", interactivityHandler)
+
+    http.Handle("/sms", WebhookHandler[model.SMS]{
+        Parser:  ParseTwilioSMS,
+        Handler: handleIncomingSMSContext,
+    })
+
+    http.Handle("/nexmo/sms", WebhookHandler[model.SMS]{
+        Parser:  ParseNexmoSMS,
+        Handler: handleIncomingSMSContext,
+    })
+    http.Handle("/nexmo/phone", WebhookHandler[model.PhoneCallEvent]{
+        Parser:  ParseNexmoPhoneCallEvent,
+        Handler: handleIncomingPhoneCallEventContext,
+    })
 
     port := os.Getenv("PORT")
     if port == "" {
@@ -83,23 +89,27 @@ func main() {
     log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }
 
-type SMSHandler struct {
-    Parser     model.SMSParser
-    SMSHandler func(ctx context.Context, message model.SMS) error
+type WebhookData interface {
+    model.PhoneCallEvent | model.SMS
 }
 
-func (h SMSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+type WebhookHandler[T WebhookData] struct {
+    Parser  func(r *http.Request) (T, error)
+    Handler func(ctx context.Context, message T) error
+}
+
+func (h WebhookHandler[T]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     message, err := h.Parser(r)
     if err != nil {
         w.WriteHeader(http.StatusInternalServerError)
-        fmt.Fprintf(w, "Failed to decode the incoming SMS: %s", err)
+        fmt.Fprintf(w, "Failed to decode the incoming webhook on %q: %s\n", err, r.RequestURI)
         return
     }
     log.Printf("%+v", message)
 
-    err = h.SMSHandler(r.Context(), message)
+    err = h.Handler(r.Context(), message)
     if err != nil {
-        fmt.Println("Failed to handle incoming SMS", err)
+        fmt.Printf("Failed to handle incoming webhook on %q: %s\n", err, r.RequestURI)
     }
 
     fmt.Fprintf(w, "")
@@ -181,6 +191,23 @@ func uniqueUserIds(requests []*model.ForwardingRequest) []string {
     }
 
     return userIds
+}
+
+func handleIncomingPhoneCallEventContext(ctx context.Context, event model.PhoneCallEvent) error {
+    if event.Status != "ok" {
+        fmt.Printf("Ignoring phone call event with status %q\n", event.Status)
+        return nil
+    }
+
+    _, _, err := slackClient.PostMessage(
+        config.Slack.Channel,
+        slack.MsgOptionBlocks(messages.PhoneCallChannelNotifyMessage(event).Blocks.BlockSet...),
+    )
+    if err != nil {
+        return fmt.Errorf("failed to publish SMS to Slack: %w", err)
+    }
+
+    return nil
 }
 
 func interactivityHandler(w http.ResponseWriter, r *http.Request) {

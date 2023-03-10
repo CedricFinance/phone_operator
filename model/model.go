@@ -1,7 +1,6 @@
 package model
 
 import (
-    "net/http"
     "time"
 )
 
@@ -30,4 +29,10 @@ type SMS struct {
     Body string
 }
 
-type SMSParser func(r *http.Request) (SMS, error)
+type PhoneCallEvent struct {
+    Status   string
+    From     string
+    Duration string
+    Start    string
+    End      string
+}

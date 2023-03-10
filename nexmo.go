@@ -42,3 +42,29 @@ func ParseNexmoSMS(r *http.Request) (model.SMS, error) {
 
     return model.SMS{}, fmt.Errorf("can't handle %q HTTP method", r.Method)
 }
+
+func ParseNexmoPhoneCallEvent(r *http.Request) (model.PhoneCallEvent, error) {
+    if r.Method == http.MethodGet {
+        query := r.URL.Query()
+
+        status := query.Get("status")
+        if status != "ok" {
+            // We'll ignore events with status != "ok"
+            return model.PhoneCallEvent{
+                Status: status,
+            }, nil
+        }
+
+        message := model.PhoneCallEvent{
+            Status:   status,
+            From:     query.Get("from"),
+            Start:    query.Get("call_start"),
+            End:      query.Get("call_end"),
+            Duration: query.Get("call_duration"),
+        }
+
+        return message, nil
+    }
+
+    return model.PhoneCallEvent{}, fmt.Errorf("can't handle %q HTTP method", r.Method)
+}

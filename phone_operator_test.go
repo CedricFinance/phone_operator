@@ -17,7 +17,7 @@ func parseSMS(_ *http.Request) (model.SMS, error) {
 }
 
 func TestSMSHandler_ServeHTTP(t *testing.T) {
-    var handler = SMSHandler{
+    var handler = WebhookHandler{
         Parser: parseSMS,
         SMSHandler: func(ctx context.Context, message model.SMS) error {
             if message.From != "0123456789" {
