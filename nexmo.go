@@ -17,15 +17,28 @@ type nexmoIncomingSms struct {
 func ParseNexmoSMS(r *http.Request) (model.SMS, error) {
     var incomingSms nexmoIncomingSms
 
-    err := json.NewDecoder(r.Body).Decode(&incomingSms)
-    if err != nil {
-        return model.SMS{}, fmt.Errorf("failed to parse request body: %w", err)
+    if r.Method == http.MethodPost {
+        err := json.NewDecoder(r.Body).Decode(&incomingSms)
+        if err != nil {
+            return model.SMS{}, fmt.Errorf("failed to parse request body: %w", err)
+        }
+
+        message := model.SMS{
+            Body: incomingSms.Text,
+            From: incomingSms.From,
+        }
+
+        return message, nil
     }
 
-    message := model.SMS{
-        Body: incomingSms.Text,
-        From: incomingSms.From,
+    if r.Method == http.MethodGet {
+        message := model.SMS{
+            Body: r.URL.Query().Get("text"),
+            From: r.URL.Query().Get("msisdn"),
+        }
+
+        return message, nil
     }
 
-    return message, nil
+    return model.SMS{}, fmt.Errorf("can't handle %q HTTP method", r.Method)
 }
